@@ -34,12 +34,15 @@ const state = {
     cooldown: 0,
     alive: true,
     invuln: 0,
+    powerType: null,
+    powerTimer: 0,
   },
   bullets: [],
   enemyBullets: [],
   enemies: [],
   dives: [],
   explosions: [],
+  powerups: [],
   stars: [],
   formation: {
     offsetX: 0,
@@ -54,6 +57,8 @@ const state = {
 const audio = {
   ctx: null,
   master: null,
+  musicGain: null,
+  sfxGain: null,
   unlocked: false,
   musicTimer: null,
   musicStep: 0,
@@ -104,11 +109,17 @@ function initAudio() {
   if (audio.ctx) return;
   audio.ctx = new (window.AudioContext || window.webkitAudioContext)();
   audio.master = audio.ctx.createGain();
-  audio.master.gain.value = 0.08;
+  audio.master.gain.value = 0.12;
+  audio.musicGain = audio.ctx.createGain();
+  audio.sfxGain = audio.ctx.createGain();
+  audio.musicGain.gain.value = 0.06;
+  audio.sfxGain.gain.value = 0.2;
   audio.master.connect(audio.ctx.destination);
+  audio.musicGain.connect(audio.master);
+  audio.sfxGain.connect(audio.master);
 }
 
-function playTone({ freq, duration, type = "square", gain = 0.12, sweep }) {
+function playTone({ freq, duration, type = "square", gain = 0.12, sweep, channel = "sfx" }) {
   if (!audio.ctx || audio.ctx.state !== "running") return;
   const now = audio.ctx.currentTime;
   const osc = audio.ctx.createOscillator();
@@ -122,7 +133,7 @@ function playTone({ freq, duration, type = "square", gain = 0.12, sweep }) {
   amp.gain.exponentialRampToValueAtTime(gain, now + 0.02);
   amp.gain.exponentialRampToValueAtTime(0.0001, now + duration);
   osc.connect(amp);
-  amp.connect(audio.master);
+  amp.connect(channel === "music" ? audio.musicGain : audio.sfxGain);
   osc.start(now);
   osc.stop(now + duration + 0.02);
 }
@@ -140,20 +151,28 @@ function playNoise(duration, gain) {
   noise.buffer = buffer;
   amp.gain.value = gain;
   noise.connect(amp);
-  amp.connect(audio.master);
+  amp.connect(audio.sfxGain);
   noise.start(now);
 }
 
 function startMusic() {
   if (!audio.ctx || audio.musicTimer) return;
-  const melody = [523, 659, 783, 659, 587, 659, 783, 880];
+  const lead = [523, 0, 659, 0, 784, 659, 587, 659, 784, 0, 880, 784, 659, 587, 523, 0];
+  const bass = [131, 0, 147, 0, 165, 0, 147, 0];
   audio.musicTimer = setInterval(() => {
     if (state.mode === MODE_GAMEOVER) return;
-    const note = melody[audio.musicStep % melody.length];
-    const duration = state.mode === MODE_PLAY ? 0.16 : 0.22;
-    playTone({ freq: note, duration, gain: 0.05, type: "square" });
+    const step = audio.musicStep;
+    const leadNote = lead[step % lead.length];
+    const bassNote = bass[step % bass.length];
+    const duration = state.mode === MODE_PLAY ? 0.14 : 0.18;
+    if (leadNote > 0) {
+      playTone({ freq: leadNote, duration, gain: 0.07, type: "square", channel: "music" });
+    }
+    if (bassNote > 0 && step % 2 === 0) {
+      playTone({ freq: bassNote, duration: 0.2, gain: 0.05, type: "triangle", channel: "music" });
+    }
     audio.musicStep += 1;
-  }, 140);
+  }, 130);
 }
 
 function unlockAudio() {
@@ -268,10 +287,11 @@ function pickDivePattern() {
 
 function spawnDive(enemy) {
   enemy.diving = true;
+  const duration = clamp(1.9 - (state.wave - 1) * 0.06, 1.1, 1.9);
   const dive = {
     enemy,
     t: 0,
-    duration: 1.9,
+    duration,
     startX: enemy.x,
     startY: enemy.y,
     curve: (Math.random() > 0.5 ? 1 : -1) * (70 + Math.random() * 40),
@@ -359,6 +379,14 @@ function updateExplosions(dt) {
   }
 }
 
+function updatePowerups(dt) {
+  state.powerups = state.powerups.filter((p) => p.y < H + 20 && p.life > 0);
+  for (const p of state.powerups) {
+    p.y += p.vy * dt;
+    p.life -= dt;
+  }
+}
+
 function updatePlayer(dt) {
   if (!state.player.alive || state.mode !== MODE_PLAY) return;
   const speed = state.player.speed;
@@ -372,23 +400,46 @@ function updatePlayer(dt) {
 
   state.player.cooldown = Math.max(0, state.player.cooldown - dt);
   state.player.invuln = Math.max(0, state.player.invuln - dt);
+  if (state.player.powerTimer > 0) {
+    state.player.powerTimer = Math.max(0, state.player.powerTimer - dt);
+    if (state.player.powerTimer === 0) {
+      state.player.powerType = null;
+    }
+  }
   if (keys.has("Space") && state.player.cooldown <= 0) {
-    state.bullets.push({
-      x: state.player.x,
-      y: state.player.y - 12,
-      vy: -360,
-      r: 2,
-    });
-    state.player.cooldown = 0.3;
-    playTone({ freq: 880, duration: 0.12, gain: 0.08, sweep: 520 });
+    const power = state.player.powerType;
+    const cooldown = power === "rapid" ? 0.15 : power === "spread" ? 0.35 : 0.3;
+    if (power === "spread") {
+      const spreads = [-120, 0, 120];
+      spreads.forEach((vx) => {
+        state.bullets.push({
+          x: state.player.x,
+          y: state.player.y - 12,
+          vx,
+          vy: -340,
+          r: 2,
+        });
+      });
+    } else {
+      state.bullets.push({
+        x: state.player.x,
+        y: state.player.y - 12,
+        vx: 0,
+        vy: -360,
+        r: 2,
+      });
+    }
+    state.player.cooldown = cooldown;
+    playTone({ freq: 880, duration: 0.12, gain: 0.12, sweep: 520 });
   }
 }
 
 function updateBullets(dt) {
-  state.bullets = state.bullets.filter((b) => b.y > -10);
+  state.bullets = state.bullets.filter((b) => b.y > -10 && b.x > -10 && b.x < W + 10);
   state.enemyBullets = state.enemyBullets.filter((b) => b.y < H + 20);
   for (const bullet of state.bullets) {
     bullet.y += bullet.vy * dt;
+    bullet.x += (bullet.vx || 0) * dt;
   }
   for (const bullet of state.enemyBullets) {
     bullet.y += bullet.vy * dt;
@@ -402,20 +453,21 @@ function enemyFire(dt) {
   const candidates = state.enemies.filter((e) => e.alive && !e.diving);
   if (candidates.length > 0) {
     const pick = candidates[Math.floor(Math.random() * candidates.length)];
-    if (Math.random() < pick.diveChance) {
+    const diveBoost = Math.min(0.2, (state.wave - 1) * 0.02);
+    if (Math.random() < pick.diveChance + diveBoost) {
       spawnDive(pick);
     }
-    if (Math.random() < 0.85) {
+    if (Math.random() < 0.85 + Math.min(0.1, (state.wave - 1) * 0.02)) {
       state.enemyBullets.push({
         x: pick.x,
         y: pick.y + 10,
-        vy: 220,
+        vy: 220 + (state.wave - 1) * 10,
         r: 2,
       });
-      playTone({ freq: 330, duration: 0.08, gain: 0.05, sweep: 220 });
+      playTone({ freq: 330, duration: 0.08, gain: 0.09, sweep: 220 });
     }
   }
-  state.nextDive = 0.9 + Math.random() * 1.1;
+  state.nextDive = clamp(1.1 - (state.wave - 1) * 0.07, 0.45, 1.1) + Math.random() * 0.4;
 }
 
 function hitTest(a, b) {
@@ -434,13 +486,16 @@ function resolveHits() {
         enemy.diving = false;
         bullet.y = -999;
         updateScore(enemy.points);
-        playNoise(0.12, 0.12);
+        playNoise(0.12, 0.2);
         state.explosions.push({
           x: enemy.x,
           y: enemy.y,
           life: 0.35,
           radius: 4,
         });
+        if (state.mode === MODE_PLAY && Math.random() < 0.12) {
+          spawnPowerup(enemy.x, enemy.y);
+        }
       }
     }
   }
@@ -449,7 +504,13 @@ function resolveHits() {
     for (const bullet of state.enemyBullets) {
       if (Math.abs(state.player.x - bullet.x) < 10 && Math.abs(state.player.y - bullet.y) < 12) {
         bullet.y = H + 40;
-        killPlayer();
+        if (state.player.powerType === "shield") {
+          state.player.powerType = null;
+          state.player.powerTimer = 0;
+          playTone({ freq: 520, duration: 0.12, gain: 0.12, sweep: 880 });
+        } else {
+          killPlayer();
+        }
         break;
       }
     }
@@ -460,7 +521,7 @@ function killPlayer() {
   state.lives -= 1;
   state.player.alive = false;
   state.player.invuln = 1.2;
-  playNoise(0.2, 0.2);
+  playNoise(0.2, 0.3);
   state.explosions.push({
     x: state.player.x,
     y: state.player.y,
@@ -494,6 +555,12 @@ function drawPlayer() {
   drawSprite(SPRITES.player, x, y, 2, "#ffce35", "#2e7bff");
   ctx.fillStyle = "#ff3f3f";
   ctx.fillRect(Math.round(x - 2), Math.round(y + 10), 4, 6);
+  if (state.player.powerType === "shield") {
+    ctx.strokeStyle = "rgba(120, 200, 255, 0.8)";
+    ctx.beginPath();
+    ctx.arc(x, y, 16, 0, Math.PI * 2);
+    ctx.stroke();
+  }
 }
 
 function drawEnemies() {
@@ -537,6 +604,19 @@ function drawExplosions() {
   }
 }
 
+function drawPowerups() {
+  for (const p of state.powerups) {
+    ctx.fillStyle = p.color;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, 7, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = "#111";
+    ctx.font = "8px 'Press Start 2P', monospace";
+    ctx.textAlign = "center";
+    ctx.fillText(p.label, p.x, p.y + 3);
+  }
+}
+
 function drawHUD() {
   ctx.fillStyle = "#cfd2d8";
   ctx.textAlign = "left";
@@ -547,6 +627,11 @@ function drawHUD() {
 
   ctx.textAlign = "left";
   ctx.fillText(`CREDIT ${state.credits.toString().padStart(2, "0")}`, 12, H - 10);
+  if (state.player.powerType) {
+    ctx.textAlign = "center";
+    ctx.fillStyle = "#ffce35";
+    ctx.fillText(`POWER ${state.player.powerType.toUpperCase()}`, W / 2, H - 10);
+  }
 }
 
 function drawAttract() {
@@ -587,12 +672,14 @@ function updateGame(dt) {
   updateFormation(dt);
   updateDives(dt);
   updateExplosions(dt);
+  updatePowerups(dt);
 
   if (state.mode === MODE_PLAY) {
     updatePlayer(dt);
     updateBullets(dt);
     enemyFire(dt);
     resolveHits();
+    checkPowerupPickup();
 
     const aliveCount = state.enemies.filter((e) => e.alive).length;
     if (aliveCount === 0) {
@@ -610,6 +697,7 @@ function drawGame() {
   drawPlayer();
   drawBullets();
   drawExplosions();
+  drawPowerups();
   drawHUD();
 
   if (state.mode === MODE_ATTRACT) {
@@ -635,9 +723,12 @@ function startGame() {
   state.wave = 1;
   state.player.alive = true;
   state.player.x = W * 0.5;
+  state.player.powerType = null;
+  state.player.powerTimer = 0;
   state.bullets = [];
   state.enemyBullets = [];
   state.dives = [];
+  state.powerups = [];
   state.mode = MODE_PLAY;
   updateScore(0);
   resetHUD();
@@ -646,8 +737,36 @@ function startGame() {
 
 function insertCoin() {
   state.credits = Math.min(99, state.credits + 1);
-  playTone({ freq: 660, duration: 0.1, gain: 0.08, sweep: 990 });
+  playTone({ freq: 660, duration: 0.1, gain: 0.12, sweep: 990 });
 }
+
+function spawnPowerup(x, y) {
+  const types = [
+    { type: "rapid", label: "R", color: "#ffd25a", duration: 7 },
+    { type: "spread", label: "S", color: "#ff8de3", duration: 8 },
+    { type: "shield", label: "B", color: "#7ad5ff", duration: 6 },
+  ];
+  const pick = types[Math.floor(Math.random() * types.length)];
+  state.powerups.push({
+    x,
+    y,
+    vy: 60,
+    life: 7,
+    ...pick,
+  });
+}
+
+function checkPowerupPickup() {
+  if (!state.player.alive) return;
+  for (const p of state.powerups) {
+    if (Math.abs(state.player.x - p.x) < 14 && Math.abs(state.player.y - p.y) < 14) {
+      state.player.powerType = p.type;
+      state.player.powerTimer = p.duration;
+      p.life = 0;
+      playTone({ freq: 990, duration: 0.12, gain: 0.12, sweep: 1320 });
+      break;
+    }
+  }
 
 window.addEventListener("keydown", (event) => {
   unlockAudio();
@@ -680,3 +799,4 @@ updateScore(0);
 resetHUD();
 makeFormation();
 requestAnimationFrame(loop);
+
