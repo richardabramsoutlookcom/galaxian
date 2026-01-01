@@ -767,6 +767,7 @@ function checkPowerupPickup() {
       break;
     }
   }
+}
 
 window.addEventListener("keydown", (event) => {
   unlockAudio();
