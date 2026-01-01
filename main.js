@@ -39,6 +39,7 @@ const state = {
   enemyBullets: [],
   enemies: [],
   dives: [],
+  explosions: [],
   stars: [],
   formation: {
     offsetX: 0,
@@ -58,6 +59,47 @@ const audio = {
   musicStep: 0,
 };
 
+const SPRITES = {
+  player: [
+    "000111000",
+    "001121100",
+    "011111110",
+    "111111111",
+    "011111110",
+    "001010100",
+    "000111000",
+  ],
+  boss: [
+    "000111000",
+    "001222100",
+    "011212110",
+    "111111111",
+    "110111011",
+    "101000101",
+  ],
+  red: [
+    "001111100",
+    "011222110",
+    "111111111",
+    "110111011",
+    "010101010",
+  ],
+  purple: [
+    "001111100",
+    "011212110",
+    "111111111",
+    "110111011",
+    "011000110",
+  ],
+  blue: [
+    "001111100",
+    "011222110",
+    "111111111",
+    "010111010",
+    "001000100",
+  ],
+};
+
 function initAudio() {
   if (audio.ctx) return;
   audio.ctx = new (window.AudioContext || window.webkitAudioContext)();
@@ -67,7 +109,7 @@ function initAudio() {
 }
 
 function playTone({ freq, duration, type = "square", gain = 0.12, sweep }) {
-  if (!audio.ctx) return;
+  if (!audio.ctx || audio.ctx.state !== "running") return;
   const now = audio.ctx.currentTime;
   const osc = audio.ctx.createOscillator();
   const amp = audio.ctx.createGain();
@@ -86,7 +128,7 @@ function playTone({ freq, duration, type = "square", gain = 0.12, sweep }) {
 }
 
 function playNoise(duration, gain) {
-  if (!audio.ctx) return;
+  if (!audio.ctx || audio.ctx.state !== "running") return;
   const now = audio.ctx.currentTime;
   const buffer = audio.ctx.createBuffer(1, audio.ctx.sampleRate * duration, audio.ctx.sampleRate);
   const data = buffer.getChannelData(0);
@@ -117,9 +159,10 @@ function startMusic() {
 function unlockAudio() {
   if (audio.unlocked) return;
   initAudio();
-  audio.ctx.resume();
-  audio.unlocked = true;
-  startMusic();
+  audio.ctx.resume().then(() => {
+    audio.unlocked = true;
+    startMusic();
+  });
 }
 
 function initStars() {
@@ -134,6 +177,21 @@ function initStars() {
 function randomStarColor() {
   const colors = ["#b6d8ff", "#ffd27d", "#ff8f8f", "#b5ffcb", "#b39cff"];
   return colors[Math.floor(Math.random() * colors.length)];
+}
+
+function drawSprite(pattern, x, y, scale, primary, accent) {
+  const rows = pattern.length;
+  const cols = pattern[0].length;
+  const startX = Math.round(x - (cols * scale) / 2);
+  const startY = Math.round(y - (rows * scale) / 2);
+  for (let r = 0; r < rows; r += 1) {
+    for (let c = 0; c < cols; c += 1) {
+      const val = pattern[r][c];
+      if (val === "0") continue;
+      ctx.fillStyle = val === "2" ? accent : primary;
+      ctx.fillRect(startX + c * scale, startY + r * scale, scale, scale);
+    }
+  }
 }
 
 function resetHUD() {
@@ -162,11 +220,11 @@ function updateScore(points) {
 
 function makeFormation() {
   const rows = [
-    { count: 1, color: "#ffe04e", points: 150, diveChance: 0.42 },
-    { count: 4, color: "#ff3f3f", points: 80, diveChance: 0.36 },
-    { count: 6, color: "#a749ff", points: 50, diveChance: 0.32 },
-    { count: 6, color: "#35d4ff", points: 30, diveChance: 0.28 },
-    { count: 6, color: "#35d4ff", points: 30, diveChance: 0.28 },
+    { count: 1, color: "#ffe04e", accent: "#ff9f1a", points: 150, diveChance: 0.42, sprite: "boss" },
+    { count: 4, color: "#ff3f3f", accent: "#ffd1d1", points: 80, diveChance: 0.36, sprite: "red" },
+    { count: 6, color: "#a749ff", accent: "#ffd1ff", points: 50, diveChance: 0.32, sprite: "purple" },
+    { count: 6, color: "#35d4ff", accent: "#b6f0ff", points: 30, diveChance: 0.28, sprite: "blue" },
+    { count: 6, color: "#35d4ff", accent: "#b6f0ff", points: 30, diveChance: 0.28, sprite: "blue" },
   ];
 
   state.enemies = [];
@@ -185,10 +243,12 @@ function makeFormation() {
         h: 18,
         row: rowIndex,
         color: row.color,
+        accent: row.accent,
         points: row.points,
         diveChance: row.diveChance,
         alive: true,
         diving: false,
+        sprite: row.sprite,
         phase: Math.random() * Math.PI * 2,
       });
     }
@@ -291,6 +351,14 @@ function updateDives(dt) {
   }
 }
 
+function updateExplosions(dt) {
+  state.explosions = state.explosions.filter((exp) => exp.life > 0);
+  for (const exp of state.explosions) {
+    exp.life -= dt;
+    exp.radius += dt * 60;
+  }
+}
+
 function updatePlayer(dt) {
   if (!state.player.alive || state.mode !== MODE_PLAY) return;
   const speed = state.player.speed;
@@ -367,6 +435,12 @@ function resolveHits() {
         bullet.y = -999;
         updateScore(enemy.points);
         playNoise(0.12, 0.12);
+        state.explosions.push({
+          x: enemy.x,
+          y: enemy.y,
+          life: 0.35,
+          radius: 4,
+        });
       }
     }
   }
@@ -387,6 +461,12 @@ function killPlayer() {
   state.player.alive = false;
   state.player.invuln = 1.2;
   playNoise(0.2, 0.2);
+  state.explosions.push({
+    x: state.player.x,
+    y: state.player.y,
+    life: 0.5,
+    radius: 6,
+  });
   resetHUD();
   setTimeout(() => {
     if (state.lives <= 0) {
@@ -403,53 +483,57 @@ function drawStars() {
   ctx.fillRect(0, 0, W, H);
   for (const star of state.stars) {
     ctx.fillStyle = star.color;
-    ctx.fillRect(star.x, star.y, 2, 2);
+    const size = star.speed > 40 ? 2 : 1;
+    ctx.fillRect(star.x, star.y, size, size);
   }
 }
 
 function drawPlayer() {
   if (!state.player.alive) return;
   const { x, y } = state.player;
-  ctx.fillStyle = "#ffce35";
-  ctx.beginPath();
-  ctx.moveTo(x, y - 10);
-  ctx.lineTo(x + 8, y + 8);
-  ctx.lineTo(x - 8, y + 8);
-  ctx.closePath();
-  ctx.fill();
-
-  ctx.fillStyle = "#2e7bff";
-  ctx.fillRect(x - 4, y - 2, 8, 6);
+  drawSprite(SPRITES.player, x, y, 2, "#ffce35", "#2e7bff");
   ctx.fillStyle = "#ff3f3f";
-  ctx.fillRect(x - 2, y + 6, 4, 6);
+  ctx.fillRect(Math.round(x - 2), Math.round(y + 10), 4, 6);
 }
 
 function drawEnemies() {
   for (const enemy of state.enemies) {
     if (!enemy.alive) continue;
-    ctx.fillStyle = enemy.color;
-    ctx.beginPath();
-    ctx.moveTo(enemy.x, enemy.y - 8);
-    ctx.lineTo(enemy.x + 10, enemy.y);
-    ctx.lineTo(enemy.x + 8, enemy.y + 8);
-    ctx.lineTo(enemy.x, enemy.y + 4);
-    ctx.lineTo(enemy.x - 8, enemy.y + 8);
-    ctx.lineTo(enemy.x - 10, enemy.y);
-    ctx.closePath();
-    ctx.fill();
-    ctx.fillStyle = "#1b1b1b";
-    ctx.fillRect(enemy.x - 2, enemy.y, 4, 4);
+    const sprite = SPRITES[enemy.sprite] || SPRITES.blue;
+    drawSprite(sprite, enemy.x, enemy.y, 2, enemy.color, enemy.accent);
   }
 }
 
 function drawBullets() {
   ctx.fillStyle = "#ffe96b";
   for (const bullet of state.bullets) {
-    ctx.fillRect(bullet.x - 1, bullet.y - 6, 2, 8);
+    ctx.fillRect(Math.round(bullet.x - 1), Math.round(bullet.y - 6), 2, 8);
+    ctx.fillStyle = "rgba(255, 238, 150, 0.6)";
+    ctx.fillRect(Math.round(bullet.x - 3), Math.round(bullet.y - 4), 1, 4);
+    ctx.fillStyle = "#ffe96b";
   }
   ctx.fillStyle = "#e7e7e7";
   for (const bullet of state.enemyBullets) {
-    ctx.fillRect(bullet.x - 1, bullet.y - 6, 2, 8);
+    ctx.fillRect(Math.round(bullet.x - 1), Math.round(bullet.y - 6), 2, 8);
+    ctx.fillStyle = "rgba(231, 231, 231, 0.6)";
+    ctx.fillRect(Math.round(bullet.x + 2), Math.round(bullet.y - 4), 1, 4);
+    ctx.fillStyle = "#e7e7e7";
+  }
+}
+
+function drawExplosions() {
+  for (const exp of state.explosions) {
+    const alpha = Math.max(0, exp.life / 0.5);
+    ctx.strokeStyle = `rgba(255, 206, 53, ${alpha})`;
+    ctx.beginPath();
+    for (let i = 0; i < 8; i += 1) {
+      const ang = (i / 8) * Math.PI * 2;
+      const r1 = exp.radius * 0.4;
+      const r2 = exp.radius;
+      ctx.moveTo(exp.x + Math.cos(ang) * r1, exp.y + Math.sin(ang) * r1);
+      ctx.lineTo(exp.x + Math.cos(ang) * r2, exp.y + Math.sin(ang) * r2);
+    }
+    ctx.stroke();
   }
 }
 
@@ -502,6 +586,7 @@ function updateGame(dt) {
   updateStars(dt);
   updateFormation(dt);
   updateDives(dt);
+  updateExplosions(dt);
 
   if (state.mode === MODE_PLAY) {
     updatePlayer(dt);
@@ -524,6 +609,7 @@ function drawGame() {
   drawEnemies();
   drawPlayer();
   drawBullets();
+  drawExplosions();
   drawHUD();
 
   if (state.mode === MODE_ATTRACT) {
@@ -585,6 +671,9 @@ window.addEventListener("keyup", (event) => {
   const key = event.code === "Space" ? "Space" : event.key;
   keys.delete(key);
 });
+
+canvas.addEventListener("pointerdown", unlockAudio);
+window.addEventListener("touchstart", unlockAudio, { passive: true });
 
 initStars();
 updateScore(0);
