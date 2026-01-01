@@ -1,0 +1,101 @@
+@import url("https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap");
+
+:root {
+  --bg: #050508;
+  --hud: #cfd2d8;
+  --score: #d73b3b;
+  --accent: #ffce35;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  font-family: "Press Start 2P", "Courier New", monospace;
+  background: radial-gradient(circle at 50% 20%, #0b0f1a 0%, #050508 50%, #030305 100%);
+  color: var(--hud);
+  display: grid;
+  place-items: center;
+}
+
+.frame {
+  width: min(92vw, 520px);
+  display: grid;
+  gap: 8px;
+}
+
+.hud {
+  text-align: center;
+  line-height: 1.1;
+}
+
+.score {
+  letter-spacing: 2px;
+}
+
+.score-numbers {
+  color: var(--score);
+  font-size: 22px;
+  display: flex;
+  justify-content: center;
+  gap: 48px;
+  margin-top: 6px;
+}
+
+#game {
+  width: 100%;
+  height: auto;
+  background: #000;
+  border: 2px solid #0f0f12;
+  image-rendering: pixelated;
+  box-shadow: 0 0 24px rgba(0, 0, 0, 0.6);
+}
+
+.credits {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0 6px;
+  font-size: 12px;
+}
+
+.lives,
+.flags {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.life-ship,
+.flag {
+  width: 18px;
+  height: 10px;
+  background: #d63b3b;
+  clip-path: polygon(50% 0%, 62% 20%, 80% 20%, 100% 60%, 80% 60%, 65% 100%, 35% 100%, 20% 60%, 0% 60%, 20% 20%, 38% 20%);
+  filter: drop-shadow(0 0 4px rgba(214, 59, 59, 0.6));
+}
+
+.flag {
+  background: #ffce35;
+  clip-path: polygon(0% 0%, 80% 20%, 0% 40%, 0% 100%, 15% 100%, 15% 0%);
+  width: 14px;
+  height: 16px;
+}
+
+@media (max-width: 520px) {
+  .score-numbers {
+    font-size: 18px;
+    gap: 24px;
+  }
+
+  .credits {
+    font-size: 10px;
+  }
+}
