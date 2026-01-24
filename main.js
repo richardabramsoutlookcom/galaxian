@@ -36,15 +36,16 @@ spriteSheetRaw.onload = () => {
   const imageData = offCtx.getImageData(0, 0, offscreen.width, offscreen.height);
   const data = imageData.data;
 
-  // The background color is very dark (close to black)
-  // Make any pixel with RGB all below threshold transparent
-  const threshold = 20;
+  // The background color is dark blue/black
+  // Make any pixel that's very dark transparent
+  const threshold = 35;
   for (let i = 0; i < data.length; i += 4) {
     const r = data[i];
     const g = data[i + 1];
     const b = data[i + 2];
     // If pixel is very dark (background), make it transparent
-    if (r < threshold && g < threshold && b < threshold) {
+    // Check if it's close to black or very dark blue
+    if (r < threshold && g < threshold && b < threshold + 15) {
       data[i + 3] = 0; // Set alpha to 0
     }
   }
@@ -58,46 +59,28 @@ spriteSheetRaw.onload = () => {
 spriteSheetRaw.src = "assets/sprites.png";
 
 // Sprite definitions from the Galaxian sprite sheet (x, y, width, height)
-// The sprite sheet has enemy types in rows with multiple animation frames
-// Each enemy has several animation frames for wing flapping/movement
+// Each enemy type has 2 animation frames (wings up/down)
 const SPRITE_DEFS = {
-  // Boss/Flagship sprites (yellow) - top row, multiple animation frames
+  // Boss/Flagship sprites (yellow) - top row
   boss: [
     { x: 0, y: 0, w: 16, h: 16 },
     { x: 16, y: 0, w: 16, h: 16 },
-    { x: 32, y: 0, w: 16, h: 16 },
-    { x: 48, y: 0, w: 16, h: 16 },
   ],
   // Red enemies - second row
   red: [
     { x: 0, y: 16, w: 16, h: 16 },
     { x: 16, y: 16, w: 16, h: 16 },
-    { x: 32, y: 16, w: 16, h: 16 },
-    { x: 48, y: 16, w: 16, h: 16 },
   ],
   // Purple enemies - third row
   purple: [
     { x: 0, y: 32, w: 16, h: 16 },
     { x: 16, y: 32, w: 16, h: 16 },
-    { x: 32, y: 32, w: 16, h: 16 },
-    { x: 48, y: 32, w: 16, h: 16 },
   ],
-  // Blue enemies - fourth row (cyan colored in sprite sheet)
+  // Blue enemies - fourth row (cyan colored)
   blue: [
     { x: 0, y: 48, w: 16, h: 16 },
     { x: 16, y: 48, w: 16, h: 16 },
-    { x: 32, y: 48, w: 16, h: 16 },
-    { x: 48, y: 48, w: 16, h: 16 },
   ],
-  // Player ship (Galaxip) - green/teal colored ship
-  player: [
-    { x: 64, y: 48, w: 16, h: 16 },
-  ],
-  // Bullets - player (yellow) and enemy (white/red)
-  playerBullet: { x: 120, y: 0, w: 3, h: 8 },
-  enemyBullet: { x: 152, y: 0, w: 3, h: 8 },
-  // Flag for wave indicator
-  flag: { x: 80, y: 48, w: 8, h: 16 },
 };
 
 const state = {
@@ -1169,13 +1152,58 @@ function drawPlayer() {
     return;
   }
 
-  drawSpriteFromSheet(SPRITE_DEFS.player[0], x, y, 2);
+  // Draw Galaxip (player ship) procedurally - authentic arcade style
+  const s = 2; // scale
+
+  // Main body (blue)
+  ctx.fillStyle = "#4488ff";
+  ctx.beginPath();
+  ctx.moveTo(x, y - 12 * s);           // nose tip
+  ctx.lineTo(x + 3 * s, y - 4 * s);    // right upper
+  ctx.lineTo(x + 3 * s, y + 4 * s);    // right middle
+  ctx.lineTo(x + 6 * s, y + 6 * s);    // right wing tip
+  ctx.lineTo(x + 6 * s, y + 8 * s);    // right wing bottom
+  ctx.lineTo(x + 2 * s, y + 6 * s);    // right inner
+  ctx.lineTo(x + 2 * s, y + 8 * s);    // right bottom
+  ctx.lineTo(x - 2 * s, y + 8 * s);    // left bottom
+  ctx.lineTo(x - 2 * s, y + 6 * s);    // left inner
+  ctx.lineTo(x - 6 * s, y + 8 * s);    // left wing bottom
+  ctx.lineTo(x - 6 * s, y + 6 * s);    // left wing tip
+  ctx.lineTo(x - 3 * s, y + 4 * s);    // left middle
+  ctx.lineTo(x - 3 * s, y - 4 * s);    // left upper
+  ctx.closePath();
+  ctx.fill();
+
+  // Cockpit highlight (lighter blue)
+  ctx.fillStyle = "#66aaff";
+  ctx.beginPath();
+  ctx.moveTo(x, y - 10 * s);
+  ctx.lineTo(x + 2 * s, y - 2 * s);
+  ctx.lineTo(x + 2 * s, y + 2 * s);
+  ctx.lineTo(x, y + 4 * s);
+  ctx.lineTo(x - 2 * s, y + 2 * s);
+  ctx.lineTo(x - 2 * s, y - 2 * s);
+  ctx.closePath();
+  ctx.fill();
+
+  // Nose tip (white/yellow)
+  ctx.fillStyle = "#ffff88";
+  ctx.beginPath();
+  ctx.moveTo(x, y - 12 * s);
+  ctx.lineTo(x + 1 * s, y - 8 * s);
+  ctx.lineTo(x - 1 * s, y - 8 * s);
+  ctx.closePath();
+  ctx.fill();
+
+  // Engine glow
+  ctx.fillStyle = "#ff6644";
+  ctx.fillRect(x - 1 * s, y + 8 * s, 2 * s, 2 * s);
 
   if (state.player.powerType === "shield") {
     ctx.strokeStyle = "rgba(120, 200, 255, 0.8)";
     ctx.lineWidth = 2;
     ctx.beginPath();
-    ctx.arc(x, y, 20, 0, Math.PI * 2);
+    ctx.arc(x, y, 22, 0, Math.PI * 2);
     ctx.stroke();
     ctx.lineWidth = 1;
   }
@@ -1198,12 +1226,11 @@ function drawBullets() {
     ctx.fillStyle = gradient;
     ctx.fillRect(bullet.x - 3, bullet.y - 2, 6, 18);
 
-    if (spritesLoaded) {
-      drawSpriteFromSheet(SPRITE_DEFS.playerBullet, bullet.x, bullet.y, 2);
-    } else {
-      ctx.fillStyle = "#ffe96b";
-      ctx.fillRect(Math.round(bullet.x - 2), Math.round(bullet.y - 6), 4, 10);
-    }
+    // Player bullet - yellow/white
+    ctx.fillStyle = "#ffff88";
+    ctx.fillRect(Math.round(bullet.x - 2), Math.round(bullet.y - 6), 4, 12);
+    ctx.fillStyle = "#ffffff";
+    ctx.fillRect(Math.round(bullet.x - 1), Math.round(bullet.y - 5), 2, 8);
   }
   for (const bullet of state.enemyBullets) {
     // Enemy bullet glow
@@ -1212,12 +1239,11 @@ function drawBullets() {
     ctx.arc(bullet.x, bullet.y, 6, 0, Math.PI * 2);
     ctx.fill();
 
-    if (spritesLoaded) {
-      drawSpriteFromSheet(SPRITE_DEFS.enemyBullet, bullet.x, bullet.y, 2);
-    } else {
-      ctx.fillStyle = "#ff8888";
-      ctx.fillRect(Math.round(bullet.x - 2), Math.round(bullet.y - 6), 4, 10);
-    }
+    // Enemy bullet - red/white
+    ctx.fillStyle = "#ff4444";
+    ctx.fillRect(Math.round(bullet.x - 2), Math.round(bullet.y - 6), 4, 12);
+    ctx.fillStyle = "#ffaaaa";
+    ctx.fillRect(Math.round(bullet.x - 1), Math.round(bullet.y - 5), 2, 8);
   }
 }
 
@@ -1415,11 +1441,11 @@ function updateGame(dt) {
   state.blink += dt;
   if (state.blink > 1) state.blink = 0;
 
-  // Update animation frame (cycle every 0.15 seconds for smoother wing flapping)
+  // Update animation frame (toggle every 0.2 seconds for wing flapping)
   state.animTimer += dt;
-  if (state.animTimer > 0.15) {
+  if (state.animTimer > 0.2) {
     state.animTimer = 0;
-    state.animFrame = (state.animFrame + 1) % 4;
+    state.animFrame = (state.animFrame + 1) % 2;
   }
 
   updateStars(dt);
