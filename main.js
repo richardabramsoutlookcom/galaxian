@@ -17,6 +17,47 @@ const MODE_ATTRACT = "attract";
 const MODE_PLAY = "play";
 const MODE_GAMEOVER = "gameover";
 
+// Sprite sheet loading
+const spriteSheet = new Image();
+spriteSheet.src = "assets/sprites.png";
+let spritesLoaded = false;
+spriteSheet.onload = () => { spritesLoaded = true; };
+
+// Sprite definitions from the Galaxian sprite sheet (x, y, width, height)
+// The sprite sheet is 205x192 pixels
+// Layout: enemies in top rows (boss yellow, red, purple, blue), player ship below, then fonts
+const SPRITE_DEFS = {
+  // Boss/Flagship sprites (yellow) - top row, animation frames with wings up/down
+  boss: [
+    { x: 0, y: 0, w: 16, h: 16 },    // wings up
+    { x: 16, y: 0, w: 16, h: 16 },   // wings down
+  ],
+  // Red enemies - second row
+  red: [
+    { x: 0, y: 16, w: 16, h: 16 },
+    { x: 16, y: 16, w: 16, h: 16 },
+  ],
+  // Purple enemies - third row
+  purple: [
+    { x: 0, y: 32, w: 16, h: 16 },
+    { x: 16, y: 32, w: 16, h: 16 },
+  ],
+  // Blue enemies - fourth row
+  blue: [
+    { x: 0, y: 48, w: 16, h: 16 },
+    { x: 16, y: 48, w: 16, h: 16 },
+  ],
+  // Player ship (Galaxip) - appears after enemy rows
+  player: [
+    { x: 64, y: 48, w: 16, h: 16 },
+  ],
+  // Bullets - small sprites
+  playerBullet: { x: 110, y: 48, w: 4, h: 8 },
+  enemyBullet: { x: 144, y: 48, w: 4, h: 8 },
+  // Flag for wave indicator
+  flag: { x: 80, y: 48, w: 8, h: 16 },
+};
+
 const state = {
   score: 0,
   highScore: 0,
@@ -25,11 +66,13 @@ const state = {
   credits: 0,
   mode: MODE_ATTRACT,
   blink: 0,
+  animFrame: 0,
+  animTimer: 0,
   player: {
     x: W * 0.5,
     y: H - 70,
-    w: 18,
-    h: 18,
+    w: 32,
+    h: 32,
     speed: 210,
     cooldown: 0,
     alive: true,
@@ -62,47 +105,6 @@ const audio = {
   unlocked: false,
   musicTimer: null,
   musicStep: 0,
-};
-
-const SPRITES = {
-  player: [
-    "000111000",
-    "001121100",
-    "011111110",
-    "111111111",
-    "011111110",
-    "001010100",
-    "000111000",
-  ],
-  boss: [
-    "000111000",
-    "001222100",
-    "011212110",
-    "111111111",
-    "110111011",
-    "101000101",
-  ],
-  red: [
-    "001111100",
-    "011222110",
-    "111111111",
-    "110111011",
-    "010101010",
-  ],
-  purple: [
-    "001111100",
-    "011212110",
-    "111111111",
-    "110111011",
-    "011000110",
-  ],
-  blue: [
-    "001111100",
-    "011222110",
-    "111111111",
-    "010111010",
-    "001000100",
-  ],
 };
 
 function initAudio() {
@@ -198,19 +200,26 @@ function randomStarColor() {
   return colors[Math.floor(Math.random() * colors.length)];
 }
 
-function drawSprite(pattern, x, y, scale, primary, accent) {
-  const rows = pattern.length;
-  const cols = pattern[0].length;
-  const startX = Math.round(x - (cols * scale) / 2);
-  const startY = Math.round(y - (rows * scale) / 2);
-  for (let r = 0; r < rows; r += 1) {
-    for (let c = 0; c < cols; c += 1) {
-      const val = pattern[r][c];
-      if (val === "0") continue;
-      ctx.fillStyle = val === "2" ? accent : primary;
-      ctx.fillRect(startX + c * scale, startY + r * scale, scale, scale);
-    }
-  }
+// Draw sprite from sprite sheet
+function drawSpriteFromSheet(spriteDef, x, y, scale = 2) {
+  if (!spritesLoaded) return;
+  const w = spriteDef.w * scale;
+  const h = spriteDef.h * scale;
+  ctx.imageSmoothingEnabled = false;
+  ctx.drawImage(
+    spriteSheet,
+    spriteDef.x, spriteDef.y, spriteDef.w, spriteDef.h,
+    Math.round(x - w / 2), Math.round(y - h / 2), w, h
+  );
+}
+
+// Draw animated sprite (picks frame based on animation state)
+function drawAnimatedSprite(spriteType, x, y, scale = 2) {
+  if (!spritesLoaded) return;
+  const frames = SPRITE_DEFS[spriteType];
+  if (!frames || frames.length === 0) return;
+  const frameIndex = state.animFrame % frames.length;
+  drawSpriteFromSheet(frames[frameIndex], x, y, scale);
 }
 
 function resetHUD() {
@@ -239,11 +248,11 @@ function updateScore(points) {
 
 function makeFormation() {
   const rows = [
-    { count: 1, color: "#ffe04e", accent: "#ff9f1a", points: 150, diveChance: 0.42, sprite: "boss" },
-    { count: 4, color: "#ff3f3f", accent: "#ffd1d1", points: 80, diveChance: 0.36, sprite: "red" },
-    { count: 6, color: "#a749ff", accent: "#ffd1ff", points: 50, diveChance: 0.32, sprite: "purple" },
-    { count: 6, color: "#35d4ff", accent: "#b6f0ff", points: 30, diveChance: 0.28, sprite: "blue" },
-    { count: 6, color: "#35d4ff", accent: "#b6f0ff", points: 30, diveChance: 0.28, sprite: "blue" },
+    { count: 1, points: 150, diveChance: 0.42, sprite: "boss" },
+    { count: 4, points: 80, diveChance: 0.36, sprite: "red" },
+    { count: 6, points: 50, diveChance: 0.32, sprite: "purple" },
+    { count: 6, points: 30, diveChance: 0.28, sprite: "blue" },
+    { count: 6, points: 30, diveChance: 0.28, sprite: "blue" },
   ];
 
   state.enemies = [];
@@ -258,11 +267,9 @@ function makeFormation() {
         baseY: y,
         x: startX + i * spacing,
         y,
-        w: 22,
-        h: 18,
+        w: 32,
+        h: 32,
         row: rowIndex,
-        color: row.color,
-        accent: row.accent,
         points: row.points,
         diveChance: row.diveChance,
         alive: true,
@@ -552,39 +559,47 @@ function drawStars() {
 function drawPlayer() {
   if (!state.player.alive) return;
   const { x, y } = state.player;
-  drawSprite(SPRITES.player, x, y, 2, "#ffce35", "#2e7bff");
-  ctx.fillStyle = "#ff3f3f";
-  ctx.fillRect(Math.round(x - 2), Math.round(y + 10), 4, 6);
+
+  // Flash when invulnerable
+  if (state.player.invuln > 0 && Math.floor(state.player.invuln * 10) % 2 === 0) {
+    return;
+  }
+
+  drawSpriteFromSheet(SPRITE_DEFS.player[0], x, y, 2);
+
   if (state.player.powerType === "shield") {
     ctx.strokeStyle = "rgba(120, 200, 255, 0.8)";
+    ctx.lineWidth = 2;
     ctx.beginPath();
-    ctx.arc(x, y, 16, 0, Math.PI * 2);
+    ctx.arc(x, y, 20, 0, Math.PI * 2);
     ctx.stroke();
+    ctx.lineWidth = 1;
   }
 }
 
 function drawEnemies() {
   for (const enemy of state.enemies) {
     if (!enemy.alive) continue;
-    const sprite = SPRITES[enemy.sprite] || SPRITES.blue;
-    drawSprite(sprite, enemy.x, enemy.y, 2, enemy.color, enemy.accent);
+    drawAnimatedSprite(enemy.sprite, enemy.x, enemy.y, 2);
   }
 }
 
 function drawBullets() {
-  ctx.fillStyle = "#ffe96b";
   for (const bullet of state.bullets) {
-    ctx.fillRect(Math.round(bullet.x - 1), Math.round(bullet.y - 6), 2, 8);
-    ctx.fillStyle = "rgba(255, 238, 150, 0.6)";
-    ctx.fillRect(Math.round(bullet.x - 3), Math.round(bullet.y - 4), 1, 4);
-    ctx.fillStyle = "#ffe96b";
+    if (spritesLoaded) {
+      drawSpriteFromSheet(SPRITE_DEFS.playerBullet, bullet.x, bullet.y, 2);
+    } else {
+      ctx.fillStyle = "#ffe96b";
+      ctx.fillRect(Math.round(bullet.x - 1), Math.round(bullet.y - 6), 2, 8);
+    }
   }
-  ctx.fillStyle = "#e7e7e7";
   for (const bullet of state.enemyBullets) {
-    ctx.fillRect(Math.round(bullet.x - 1), Math.round(bullet.y - 6), 2, 8);
-    ctx.fillStyle = "rgba(231, 231, 231, 0.6)";
-    ctx.fillRect(Math.round(bullet.x + 2), Math.round(bullet.y - 4), 1, 4);
-    ctx.fillStyle = "#e7e7e7";
+    if (spritesLoaded) {
+      drawSpriteFromSheet(SPRITE_DEFS.enemyBullet, bullet.x, bullet.y, 2);
+    } else {
+      ctx.fillStyle = "#e7e7e7";
+      ctx.fillRect(Math.round(bullet.x - 1), Math.round(bullet.y - 6), 2, 8);
+    }
   }
 }
 
@@ -667,6 +682,13 @@ function drawGameOver() {
 function updateGame(dt) {
   state.blink += dt;
   if (state.blink > 1) state.blink = 0;
+
+  // Update animation frame (toggle every 0.3 seconds for wing flapping)
+  state.animTimer += dt;
+  if (state.animTimer > 0.3) {
+    state.animTimer = 0;
+    state.animFrame = (state.animFrame + 1) % 2;
+  }
 
   updateStars(dt);
   updateFormation(dt);
