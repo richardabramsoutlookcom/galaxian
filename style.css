@@ -19,21 +19,35 @@ body {
 
 body {
   font-family: "Press Start 2P", "Courier New", monospace;
-  background: radial-gradient(circle at 50% 20%, #0b0f1a 0%, #050508 50%, #030305 100%);
+  background: radial-gradient(ellipse at 50% 0%, #0a0f1a 0%, #050508 40%, #020204 100%);
   color: var(--hud);
   display: grid;
   place-items: center;
+  min-height: 100vh;
 }
 
 .frame {
   width: min(92vw, 520px);
   display: grid;
   gap: 8px;
+  padding: 16px;
+  background: linear-gradient(180deg, #1a1a2e 0%, #0f0f1a 100%);
+  border-radius: 8px;
+  border: 2px solid #2a2a44;
+  box-shadow:
+    0 4px 20px rgba(0, 0, 0, 0.5),
+    inset 0 1px 0 rgba(255, 255, 255, 0.05);
 }
 
 .hud {
   text-align: center;
   line-height: 1.1;
+  padding: 8px 0;
+}
+
+.hud .score {
+  color: #aabbff;
+  text-shadow: 0 0 8px rgba(100, 150, 255, 0.5);
 }
 
 .score {
@@ -47,15 +61,20 @@ body {
   justify-content: center;
   gap: 48px;
   margin-top: 6px;
+  text-shadow: 0 0 10px rgba(215, 59, 59, 0.5);
 }
 
 #game {
   width: 100%;
   height: auto;
   background: #000;
-  border: 2px solid #0f0f12;
+  border: 3px solid #1a1a24;
+  border-radius: 4px;
   image-rendering: pixelated;
-  box-shadow: 0 0 24px rgba(0, 0, 0, 0.6);
+  box-shadow:
+    0 0 40px rgba(60, 100, 255, 0.15),
+    0 0 80px rgba(60, 100, 255, 0.08),
+    inset 0 0 60px rgba(0, 0, 0, 0.5);
 }
 
 .credits {
@@ -77,16 +96,17 @@ body {
 .flag {
   width: 18px;
   height: 10px;
-  background: #d63b3b;
+  background: linear-gradient(180deg, #ff5555 0%, #d63b3b 50%, #aa2222 100%);
   clip-path: polygon(50% 0%, 62% 20%, 80% 20%, 100% 60%, 80% 60%, 65% 100%, 35% 100%, 20% 60%, 0% 60%, 20% 20%, 38% 20%);
-  filter: drop-shadow(0 0 4px rgba(214, 59, 59, 0.6));
+  filter: drop-shadow(0 0 6px rgba(255, 80, 80, 0.7));
 }
 
 .flag {
-  background: #ffce35;
+  background: linear-gradient(180deg, #ffe066 0%, #ffce35 50%, #cc9900 100%);
   clip-path: polygon(0% 0%, 80% 20%, 0% 40%, 0% 100%, 15% 100%, 15% 0%);
   width: 14px;
   height: 16px;
+  filter: drop-shadow(0 0 5px rgba(255, 206, 53, 0.7));
 }
 
 @media (max-width: 520px) {
