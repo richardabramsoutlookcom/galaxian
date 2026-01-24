@@ -17,11 +17,45 @@ const MODE_ATTRACT = "attract";
 const MODE_PLAY = "play";
 const MODE_GAMEOVER = "gameover";
 
-// Sprite sheet loading
-const spriteSheet = new Image();
-spriteSheet.src = "assets/sprites.png";
+// Sprite sheet loading with transparency processing
+const spriteSheetRaw = new Image();
+let spriteSheet = null;
 let spritesLoaded = false;
-spriteSheet.onload = () => { spritesLoaded = true; };
+
+spriteSheetRaw.onload = () => {
+  // Create offscreen canvas to process sprite sheet
+  const offscreen = document.createElement("canvas");
+  offscreen.width = spriteSheetRaw.width;
+  offscreen.height = spriteSheetRaw.height;
+  const offCtx = offscreen.getContext("2d");
+
+  // Draw original sprite sheet
+  offCtx.drawImage(spriteSheetRaw, 0, 0);
+
+  // Get image data and make background transparent
+  const imageData = offCtx.getImageData(0, 0, offscreen.width, offscreen.height);
+  const data = imageData.data;
+
+  // The background color is very dark (close to black)
+  // Make any pixel with RGB all below threshold transparent
+  const threshold = 20;
+  for (let i = 0; i < data.length; i += 4) {
+    const r = data[i];
+    const g = data[i + 1];
+    const b = data[i + 2];
+    // If pixel is very dark (background), make it transparent
+    if (r < threshold && g < threshold && b < threshold) {
+      data[i + 3] = 0; // Set alpha to 0
+    }
+  }
+
+  offCtx.putImageData(imageData, 0, 0);
+
+  // Create new image from processed canvas
+  spriteSheet = offscreen;
+  spritesLoaded = true;
+};
+spriteSheetRaw.src = "assets/sprites.png";
 
 // Sprite definitions from the Galaxian sprite sheet (x, y, width, height)
 // The sprite sheet has enemy types in rows with multiple animation frames
