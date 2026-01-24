@@ -723,8 +723,9 @@ function pickDivePattern() {
 
 function spawnDive(enemy) {
   enemy.diving = true;
-  const duration = clamp(1.9 - (state.wave - 1) * 0.06, 1.1, 1.9);
-  const curve = (Math.random() > 0.5 ? 1 : -1) * (70 + Math.random() * 40);
+  // AUTHENTIC: Dives get faster in later waves
+  const duration = clamp(2.2 - (state.wave - 1) * 0.1, 1.0, 2.2);
+  const curve = (Math.random() > 0.5 ? 1 : -1) * (60 + Math.random() * 50);
   const pattern = pickDivePattern();
 
   const dive = {
@@ -733,6 +734,7 @@ function spawnDive(enemy) {
     duration,
     startX: enemy.x,
     startY: enemy.y,
+    targetX: state.player.x + (Math.random() - 0.5) * 60, // Aim near player
     curve,
     pattern,
     done: false,
@@ -754,14 +756,15 @@ function spawnDive(enemy) {
       escort.diving = true;
       escorts.push(escort);
 
-      // Escort dives with slight offset from boss
+      // Escort dives with slight offset from boss - flanking formation
       const escortDive = {
         enemy: escort,
-        t: -0.15 * (i + 1), // Slight delay
-        duration: duration + 0.1,
+        t: -0.12 * (i + 1), // Slight delay
+        duration: duration + 0.15,
         startX: escort.x,
         startY: escort.y,
-        curve: curve * (i === 0 ? 0.7 : -0.7), // Flanking pattern
+        targetX: state.player.x + (i === 0 ? -40 : 40), // Flank player
+        curve: curve * (i === 0 ? 0.6 : -0.6), // Flanking pattern
         pattern,
         done: false,
       };
@@ -881,18 +884,23 @@ function updateStars(dt) {
 }
 
 function updateFormation(dt) {
-  const swaySpeed = 0.9;
+  // AUTHENTIC: Formation speeds up as enemies are destroyed and in later waves
+  const aliveCount = state.enemies.filter(e => e.alive).length;
+  const speedMultiplier = 1 + (36 - aliveCount) * 0.02 + (state.wave - 1) * 0.1;
+  const swaySpeed = 0.8 * speedMultiplier;
+
   state.formation.sway += swaySpeed * dt * state.formation.dir;
-  if (Math.abs(state.formation.sway) > 1.6) {
+  if (Math.abs(state.formation.sway) > 1.8) {
     state.formation.dir *= -1;
   }
 
-  const maxOffset = 70;
+  const maxOffset = 60 + Math.min(20, state.wave * 2);
   state.formation.offsetX = Math.sin(state.formation.sway) * maxOffset;
 
   state.enemies.forEach((enemy) => {
     if (!enemy.alive || enemy.diving) return;
-    const bob = Math.sin(state.formation.sway + enemy.phase) * 3;
+    // Subtle bob animation
+    const bob = Math.sin(state.formation.sway * 2 + enemy.phase) * 2;
     enemy.x = enemy.baseX + state.formation.offsetX;
     enemy.y = enemy.baseY + bob;
   });
@@ -908,27 +916,54 @@ function updateDives(dt) {
       enemy.diving = false;
       continue;
     }
+
     const u = Math.min(1, dive.t / dive.duration);
-    let pathX = dive.startX;
-    let pathY = dive.startY + u * 360;
+
+    // AUTHENTIC GALAXIAN: Curved dive patterns that swoop toward player
+    let pathX, pathY;
 
     if (dive.pattern === "swoop") {
-      pathX = dive.startX + Math.sin(u * Math.PI) * dive.curve;
+      // Single curve swoop - aims toward player position
+      const targetX = dive.targetX || state.player.x;
+      pathX = dive.startX + (targetX - dive.startX) * u + Math.sin(u * Math.PI) * dive.curve * 0.5;
+      pathY = dive.startY + u * (H - 50);
     } else if (dive.pattern === "loop") {
-      pathX = dive.startX + Math.sin(u * Math.PI * 2) * dive.curve;
+      // Loop pattern - comes down, curves back up if survives
+      if (u < 0.6) {
+        // Dive down
+        pathX = dive.startX + Math.sin(u * Math.PI * 1.5) * dive.curve;
+        pathY = dive.startY + (u / 0.6) * (H - 100);
+      } else {
+        // Loop back up to formation
+        const loopU = (u - 0.6) / 0.4;
+        pathX = dive.startX + Math.sin(Math.PI * 1.5 + loopU * Math.PI * 0.5) * dive.curve;
+        pathY = (H - 100) - loopU * (H - 100 - dive.startY);
+      }
     } else {
-      pathX = dive.startX + Math.sin(u * Math.PI * 3) * dive.curve * 0.6;
+      // Zigzag pattern
+      pathX = dive.startX + Math.sin(u * Math.PI * 2.5) * dive.curve * 0.7;
+      pathY = dive.startY + u * (H - 30);
     }
 
-    enemy.x = pathX;
+    enemy.x = clamp(pathX, 20, W - 20);
     enemy.y = pathY;
 
+    // Dive complete - return to formation or exit screen
     if (dive.t > dive.duration) {
-      enemy.baseX = clamp(enemy.x, 80, W - 80);
-      enemy.baseY = clamp(120 + enemy.row * 40, 120, 320);
-      enemy.y = enemy.baseY;
-      enemy.x = enemy.baseX;
+      if (dive.pattern === "loop" && enemy.y < H - 50) {
+        // Loop pattern returns to formation
+        enemy.baseX = clamp(enemy.x, 80, W - 80);
+        enemy.baseY = enemy.baseY; // Keep original row
+        enemy.x = enemy.baseX;
+        enemy.y = enemy.baseY;
+      } else if (enemy.y > H - 30) {
+        // Enemy exited bottom - respawn at top of formation
+        enemy.baseX = clamp(dive.startX, 80, W - 80);
+        enemy.y = enemy.baseY;
+        enemy.x = enemy.baseX;
+      }
       enemy.diving = false;
+      enemy.scattering = false;
       dive.done = true;
     }
   }
@@ -952,6 +987,8 @@ function updatePowerups(dt) {
 
 function updatePlayer(dt) {
   if (!state.player.alive || state.mode !== MODE_PLAY) return;
+
+  // Player movement - slightly faster for responsive feel
   const speed = state.player.speed;
   if (keys.has("ArrowLeft")) {
     state.player.x -= speed * dt;
@@ -961,38 +998,17 @@ function updatePlayer(dt) {
   }
   state.player.x = clamp(state.player.x, 30, W - 30);
 
-  state.player.cooldown = Math.max(0, state.player.cooldown - dt);
   state.player.invuln = Math.max(0, state.player.invuln - dt);
-  if (state.player.powerTimer > 0) {
-    state.player.powerTimer = Math.max(0, state.player.powerTimer - dt);
-    if (state.player.powerTimer === 0) {
-      state.player.powerType = null;
-    }
-  }
-  if (keys.has("Space") && state.player.cooldown <= 0) {
-    const power = state.player.powerType;
-    const cooldown = power === "rapid" ? 0.15 : power === "spread" ? 0.35 : 0.3;
-    if (power === "spread") {
-      const spreads = [-120, 0, 120];
-      spreads.forEach((vx) => {
-        state.bullets.push({
-          x: state.player.x,
-          y: state.player.y - 12,
-          vx,
-          vy: -340,
-          r: 2,
-        });
-      });
-    } else {
-      state.bullets.push({
-        x: state.player.x,
-        y: state.player.y - 12,
-        vx: 0,
-        vy: -360,
-        r: 2,
-      });
-    }
-    state.player.cooldown = cooldown;
+
+  // AUTHENTIC GALAXIAN: Single bullet only - can only fire when no bullet on screen
+  if (keys.has("Space") && state.bullets.length === 0) {
+    state.bullets.push({
+      x: state.player.x,
+      y: state.player.y - 12,
+      vx: 0,
+      vy: -600, // Fast bullet like original
+      r: 2,
+    });
     playShootSound();
   }
 }
@@ -1011,30 +1027,45 @@ function updateBullets(dt) {
 
 function enemyFire(dt) {
   if (state.enemies.length === 0) return;
+
+  // AUTHENTIC GALAXIAN: Diving enemies shoot while diving
+  const divingEnemies = state.enemies.filter(e => e.alive && e.diving && !e.scattering);
+  for (const enemy of divingEnemies) {
+    // Random chance to shoot while diving
+    if (Math.random() < 0.02 + state.wave * 0.005) {
+      state.enemyBullets.push({
+        x: enemy.x,
+        y: enemy.y + 10,
+        vy: 280 + state.wave * 15,
+        r: 2,
+      });
+      playEnemyShootSound();
+    }
+  }
+
+  // Spawn new dives
   state.nextDive -= dt;
   if (state.nextDive > 0) return;
 
   // Candidates for diving - not currently diving and not scattering
   const candidates = state.enemies.filter((e) => e.alive && !e.diving && !e.scattering);
   if (candidates.length > 0) {
-    const pick = candidates[Math.floor(Math.random() * candidates.length)];
-    const diveBoost = Math.min(0.2, (state.wave - 1) * 0.02);
-    if (Math.random() < pick.diveChance + diveBoost) {
-      spawnDive(pick);
-    }
+    // AUTHENTIC: More dives happen as game progresses
+    const numDives = Math.min(3, 1 + Math.floor(state.wave / 3));
+    for (let i = 0; i < numDives && candidates.length > 0; i++) {
+      const idx = Math.floor(Math.random() * candidates.length);
+      const pick = candidates[idx];
+      candidates.splice(idx, 1);
 
-    // Scattering escorts don't shoot
-    if (!pick.scattering && Math.random() < 0.85 + Math.min(0.1, (state.wave - 1) * 0.02)) {
-      state.enemyBullets.push({
-        x: pick.x,
-        y: pick.y + 10,
-        vy: 220 + (state.wave - 1) * 10,
-        r: 2,
-      });
-      playEnemyShootSound();
+      const diveBoost = Math.min(0.3, (state.wave - 1) * 0.03);
+      if (Math.random() < pick.diveChance + diveBoost) {
+        spawnDive(pick);
+      }
     }
   }
-  state.nextDive = clamp(1.1 - (state.wave - 1) * 0.07, 0.45, 1.1) + Math.random() * 0.4;
+
+  // Faster dive rate in later waves
+  state.nextDive = clamp(1.0 - (state.wave - 1) * 0.08, 0.3, 1.0) + Math.random() * 0.3;
 }
 
 function hitTest(a, b) {
@@ -1074,9 +1105,7 @@ function resolveHits() {
           life: enemy.sprite === "boss" ? 0.5 : 0.35,
           radius: enemy.sprite === "boss" ? 8 : 4,
         });
-        if (state.mode === MODE_PLAY && Math.random() < 0.12) {
-          spawnPowerup(enemy.x, enemy.y);
-        }
+        // AUTHENTIC GALAXIAN: No powerups in original game
       }
     }
   }
@@ -1085,13 +1114,7 @@ function resolveHits() {
     for (const bullet of state.enemyBullets) {
       if (Math.abs(state.player.x - bullet.x) < 10 && Math.abs(state.player.y - bullet.y) < 12) {
         bullet.y = H + 40;
-        if (state.player.powerType === "shield") {
-          state.player.powerType = null;
-          state.player.powerTimer = 0;
-          playTone({ freq: 520, duration: 0.12, gain: 0.15, sweep: 880 });
-        } else {
-          killPlayer();
-        }
+        killPlayer();
         break;
       }
     }
