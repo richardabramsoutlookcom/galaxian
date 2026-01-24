@@ -247,38 +247,71 @@ function updateScore(points) {
 }
 
 function makeFormation() {
+  // Authentic Galaxian formation layout
   const rows = [
-    { count: 1, points: 150, diveChance: 0.42, sprite: "boss" },
-    { count: 4, points: 80, diveChance: 0.36, sprite: "red" },
-    { count: 6, points: 50, diveChance: 0.32, sprite: "purple" },
-    { count: 6, points: 30, diveChance: 0.28, sprite: "blue" },
-    { count: 6, points: 30, diveChance: 0.28, sprite: "blue" },
+    { count: 2, points: 150, diveChance: 0.42, sprite: "boss" },    // 2 flagships
+    { count: 6, points: 80, diveChance: 0.36, sprite: "red" },      // 6 red
+    { count: 8, points: 50, diveChance: 0.32, sprite: "purple" },   // 8 purple
+    { count: 10, points: 30, diveChance: 0.28, sprite: "blue" },    // 10 blue
+    { count: 10, points: 30, diveChance: 0.28, sprite: "blue" },    // 10 blue
   ];
 
   state.enemies = [];
-  let y = 120;
+  const baseSpacing = 36;
+  let y = 100;
+
   rows.forEach((row, rowIndex) => {
-    const spacing = 40;
+    const spacing = baseSpacing;
     const totalWidth = (row.count - 1) * spacing;
-    const startX = W * 0.5 - totalWidth / 2;
-    for (let i = 0; i < row.count; i += 1) {
-      state.enemies.push({
-        baseX: startX + i * spacing,
-        baseY: y,
-        x: startX + i * spacing,
-        y,
-        w: 32,
-        h: 32,
-        row: rowIndex,
-        points: row.points,
-        diveChance: row.diveChance,
-        alive: true,
-        diving: false,
-        sprite: row.sprite,
-        phase: Math.random() * Math.PI * 2,
-      });
+    let startX = W * 0.5 - totalWidth / 2;
+
+    // Special positioning for boss row - they sit above specific red enemies
+    if (rowIndex === 0) {
+      // Position bosses above the 2nd and 5th red enemies (index 1 and 4)
+      const redSpacing = baseSpacing;
+      const redTotalWidth = 5 * redSpacing;
+      const redStartX = W * 0.5 - redTotalWidth / 2;
+      const bossPositions = [
+        redStartX + 1 * redSpacing,  // above 2nd red
+        redStartX + 4 * redSpacing,  // above 5th red
+      ];
+      for (let i = 0; i < row.count; i += 1) {
+        state.enemies.push({
+          baseX: bossPositions[i],
+          baseY: y,
+          x: bossPositions[i],
+          y,
+          w: 32,
+          h: 32,
+          row: rowIndex,
+          points: row.points,
+          diveChance: row.diveChance,
+          alive: true,
+          diving: false,
+          sprite: row.sprite,
+          phase: Math.random() * Math.PI * 2,
+        });
+      }
+    } else {
+      for (let i = 0; i < row.count; i += 1) {
+        state.enemies.push({
+          baseX: startX + i * spacing,
+          baseY: y,
+          x: startX + i * spacing,
+          y,
+          w: 32,
+          h: 32,
+          row: rowIndex,
+          points: row.points,
+          diveChance: row.diveChance,
+          alive: true,
+          diving: false,
+          sprite: row.sprite,
+          phase: Math.random() * Math.PI * 2,
+        });
+      }
     }
-    y += 40;
+    y += 32;
   });
 
   state.formation.offsetX = 0;
