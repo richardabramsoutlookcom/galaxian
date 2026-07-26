@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Galaxian</title>
+<style>
+  html, body {
+    margin: 0; padding: 0; height: 100%;
+    background: #101014; overflow: hidden;
+    display: flex; align-items: center; justify-content: center;
+    font-family: ui-monospace, Menlo, monospace;
+  }
+  #wrap { display: flex; flex-direction: column; align-items: center; gap: 6px; }
+  canvas {
+    image-rendering: pixelated;
+    image-rendering: crisp-edges;
+    background: #000;
+    box-shadow: 0 0 0 2px #2a2a30, 0 0 40px #000a;
+  }
+  #help { color: #55555f; font-size: 11px; letter-spacing: .06em; }
+  canvas.smooth { image-rendering: auto; }
+
+  /* GALAXIAN X takes the whole window: no letterbox, no chrome, no help row.
+     The engine adds .full to <body> when that version is selected. */
+  body.full { background: #000; display: block; }
+  body.full #wrap { display: block; gap: 0; }
+  body.full #help { display: none; }
+  body.full canvas {
+    display: block; box-shadow: none;
+    width: 100vw; height: 100vh;
+  }
+</style>
+</head>
+<body>
+<div id="wrap">
+  <canvas id="screen" width="224" height="256"></canvas>
+  <div id="help">&#9668;&#9658; move &nbsp;&middot;&nbsp; SPACE fire &nbsp;&middot;&nbsp; C / X hold &nbsp;&middot;&nbsp; 1 / 2 start &nbsp;&middot;&nbsp; V version &nbsp;&middot;&nbsp; P pause &nbsp;&middot;&nbsp; M sound &nbsp;&middot;&nbsp; <b style="color:#7fe6ff">K rebind keys</b></div>
+</div>
+<script>
+/*__ART__*/
+</script>
+<script>
+/*__AUDIO__*/
+</script>
+<script>
+/*__NEOAUDIO__*/
+</script>
+<script>
+/*__NEO__*/
+</script>
+<script>
+/*__VECTOR__*/
+</script>
+<script>
+/*__X__*/
+</script>
+<script>
+/*__ENGINE__*/
+</script>
+</body>
+</html>

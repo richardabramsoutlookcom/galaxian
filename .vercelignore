@@ -1,0 +1,6 @@
+# Only the built page needs to reach the CDN.  The sources stay in the repo
+# but there is no reason to upload them to the edge.
+build/
+src/
+tasks/
+.DS_Store
